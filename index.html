@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Irrigation Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f3f4f6;
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
+            padding-bottom: 80px;
+        }
+
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.03);
+        }
+
+        .animate-enter {
+            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-enter {
+            animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .toggle-switch {
+            width: 50px;
+            height: 28px;
+            background: #cbd5e1;
+            border-radius: 30px;
+            position: relative;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #0081ff;
+        }
+        
+        .toggle-dot {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .toggle-switch.active .toggle-dot {
+            transform: translateX(22px);
+        }
+
+        .page {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .nav-item {
+            color: #94a3b8;
+            transition: all 0.3s;
+        }
+        
+        .nav-item.active {
+            color: #0d9488;
+        }
+
+        .ripple-btn {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            transform: scale(0);
+            animation: ripple-anim 600ms linear;
+            background-color: rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+        }
+
+        @keyframes ripple-anim {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 min-h-screen text-slate-800">
+
+    <div id="loading-overlay" class="fixed inset-0 z-[120] hidden flex-col items-center justify-center bg-slate-900/40 backdrop-blur-md transition-all duration-300">
+        <div class="bg-white/95 p-6 rounded-[2rem] shadow-2xl flex flex-col items-center gap-5 border border-white modal-enter">
+            <div class="w-12 h-12 rounded-full border-4 border-teal-100 border-t-teal-500 animate-spin"></div>
+            <p class="text-sm font-bold text-slate-600 tracking-wide animate-pulse">Syncing with Device</p>
+        </div>
+    </div>
+
+    <div id="offline-modal" class="fixed inset-0 z-[100] hidden flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 px-4">
+        <div class="bg-white/95 rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-[0_20px_50px_rgba(0,0,0,0.3)] modal-enter relative overflow-hidden border border-white">
+            <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-red-500 via-orange-500 to-red-500"></div>
+            <div class="w-20 h-20 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm border border-red-100 relative">
+                <span class="absolute inset-0 rounded-2xl bg-red-400 opacity-20 animate-ping"></span>
+                <i class="fa-solid fa-wifi text-2xl text-red-500"></i>
+            </div>
+            <h2 class="text-xl font-bold text-slate-800 mb-2 tracking-tight">System Offline</h2>
+            <div class="inline-block bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 mb-4">
+                <p class="text-blue-600 font-semibold text-xs">Showing cached data</p>
+            </div>
+            <p class="text-slate-500 mb-6 text-sm leading-relaxed">Please check your ESP8266 connection.</p>
+            <button onclick="dismissOfflineModal()" class="ripple-btn w-full py-3.5 rounded-2xl bg-gradient-to-r from-slate-100 to-slate-200 text-slate-700 font-bold text-sm border border-slate-300 shadow-sm transition-all duration-300">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <div id="custom-alert-modal" class="fixed inset-0 z-[110] hidden flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 px-4">
+        <div class="bg-white/95 rounded-2xl p-8 max-w-sm w-full text-center shadow-[0_20px_50px_rgba(0,0,0,0.3)] modal-enter relative overflow-hidden border border-white">
+            <div id="alert-icon-container" class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl border">
+                <i id="alert-icon" class="fa-solid"></i>
+            </div>
+            <h3 id="alert-title" class="text-lg font-bold text-slate-800 mb-2"></h3>
+            <p id="alert-message" class="text-slate-500 text-sm mb-6"></p>
+            <button onclick="closeCustomAlert()" id="alert-btn" class="ripple-btn w-full py-3 rounded-xl text-white font-bold text-sm shadow-md transition-all">Okay</button>
+        </div>
+    </div>
+
+    <header class="fixed top-0 inset-x-0 z-40 px-3 pt-3">
+        <div class="glass-morphism rounded-2xl px-5 py-3.5 flex justify-between items-center relative">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                    <i class="fa-solid fa-leaf text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-700 to-emerald-600">Smart Irrigation System</h1>
+                    <div id="header-status-container" class="flex items-center gap-1.5">
+                        <span id="header-status-dot" class="w-1.5 h-1.5 rounded-2xl bg-red-500"></span>
+                        <p id="header-status-text" class="text-[10px] font-bold text-red-400 uppercase tracking-widest">Offline</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="pt-28 pb-10">
+        
+        <main id="dashboardPage" class="page active max-w-7xl mx-auto px-4 space-y-6">
+            <div class="animate-enter" style="animation-delay: 0.1s;">
+                <div class="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#4facfe] via-[#00f2fe] to-[#00f2fe] p-8 text-white shadow-xl shadow-blue-200/50 transition-transform hover:scale-[1.02] duration-300 flex flex-col items-center justify-center text-center">
+                    <div class="relative z-10 w-full">
+                        <div class="flex items-center justify-center gap-2 mb-6 opacity-90">
+                            <div class="p-2 bg-white/20 rounded-xl backdrop-blur-md">
+                                <i class="fa-solid fa-droplet text-lg"></i>
+                            </div>
+                            <p class="font-bold text-xs uppercase tracking-wider">Soil Moisture Level</p>
+                        </div>
+                        
+                        <div class="w-48 h-48 rounded-2xl mx-auto flex items-center justify-center relative mb-6 transition-all duration-500 shadow-lg" id="moistureRing" style="background: conic-gradient(#ffffff 0%, rgba(255,255,255,0.2) 0%);">
+                            <div class="w-40 h-40 bg-gradient-to-br from-[#00d2ff] to-[#3a7bd5] rounded-2xl flex flex-col items-center justify-center z-10 shadow-inner">
+                                <span id="moistureValue" class="text-6xl font-bold tracking-tighter drop-shadow-md text-white">0</span>
+                                <span class="text-xl font-medium opacity-90 mb-1 text-white">%</span>
+                            </div>
+                        </div>
+
+                        <div class="inline-flex items-center gap-2 bg-white/25 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
+                            <span id="moisturePulse" class="w-2 h-2 bg-white rounded-2xl"></span>
+                            <span id="moistureStatus" class="text-xs font-bold uppercase tracking-wider">Waiting for data</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-[2.5rem] p-6 animate-enter" style="animation-delay: 0.2s;">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-500 flex items-center justify-center">
+                            <i class="fa-solid fa-microchip"></i>
+                        </div>
+                        System Controls
+                    </h2>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="ripple-btn bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex justify-between items-center transition-all cursor-pointer" onclick="handleAutoToggle()">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-700 text-sm mb-1">Auto Mode</h3>
+                                <p class="text-[10px] text-slate-400">System handles watering</p>
+                            </div>
+                        </div>
+                        <div class="toggle-switch" id="autoToggle">
+                            <div class="toggle-dot"></div>
+                        </div>
+                    </div>
+
+                    <div class="ripple-btn bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex justify-between items-center transition-all cursor-pointer" onclick="handlePumpToggle()">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-faucet-drip text-lg"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-700 text-sm mb-1">Water Pump</h3>
+                                <p class="text-[10px] text-slate-400" id="pumpDesc">Manual pump override</p>
+                            </div>
+                        </div>
+                        <div class="toggle-switch" id="pumpToggle">
+                            <div class="toggle-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <main id="settingsPage" class="page max-w-7xl mx-auto px-4 space-y-6">
+            <div class="glass-card rounded-[2.5rem] p-6 shadow-sm animate-enter">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center">
+                        <i class="fa-solid fa-wifi text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-700">WiFi Configuration</h2>
+                        <p class="text-[10px] text-slate-400">Update ESP8266 network credentials</p>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <input type="text" id="ssidInput" class="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 transition-all placeholder:text-slate-400" placeholder="New WiFi Name">
+                    <input type="text" id="passInput" class="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 transition-all placeholder:text-slate-400" placeholder="New Password">
+                    <button id="sendWifiBtn" class="ripple-btn w-full py-4 mt-2 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-400 text-white font-bold text-sm shadow-lg shadow-teal-500/30 transition-all duration-300">
+                        Update Network
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-[2.5rem] p-6 shadow-sm animate-enter" style="animation-delay: 0.1s;">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center">
+                            <i class="fa-solid fa-download text-lg"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-700">Install App</h2>
+                            <p class="text-[10px] text-slate-400">Add to home screen</p>
+                        </div>
+                    </div>
+                    <button id="installAppBtn" onclick="installPWA()" class="ripple-btn px-5 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs shadow-md transition-all">
+                        Install
+                    </button>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <nav class="fixed bottom-0 inset-x-0 z-50 glass-morphism rounded-t-3xl border-t border-white/50 px-6 py-2 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <div class="flex justify-around items-center">
+            <button onclick="switchTab('dashboardPage', this)" class="ripple-btn nav-btn nav-item active flex flex-col items-center gap-1.5 p-3 rounded-2xl w-20">
+                <i class="fa-solid fa-house text-xl mb-0.5"></i>
+                <span class="text-[10px] font-bold">Home</span>
+            </button>
+            <button onclick="switchTab('settingsPage', this)" class="ripple-btn nav-btn nav-item flex flex-col items-center gap-1.5 p-3 rounded-2xl w-20">
+                <i class="fa-solid fa-gear text-xl mb-0.5"></i>
+                <span class="text-[10px] font-bold">Settings</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => {
+            });
+        }
+
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then((persistent) => {
+            });
+        }
+
+        function createRipple(event) {
+            const button = event.currentTarget;
+            const circle = document.createElement("span");
+            const diameter = Math.max(button.clientWidth, button.clientHeight);
+            const radius = diameter / 2;
+            const rect = button.getBoundingClientRect();
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${event.clientX - rect.left - radius}px`;
+            circle.style.top = `${event.clientY - rect.top - radius}px`;
+            circle.classList.add("ripple");
+            const existingRipple = button.querySelector('.ripple');
+            if (existingRipple) {
+                existingRipple.remove();
+            }
+            button.appendChild(circle);
+        }
+
+        function bindRipples() {
+            document.querySelectorAll('.ripple-btn').forEach(btn => {
+                btn.removeEventListener('click', createRipple);
+                btn.addEventListener('click', createRipple);
+            });
+        }
+        
+        bindRipples();
+
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+        });
+
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    deferredPrompt = null;
+                });
+            } else {
+                showAlert("Info", "App is already installed or your browser does not support this feature.", "info");
+            }
+        }
+
+        const firebaseConfig = {
+    apiKey: "AIzaSyD0lZRWWe35-M9gEu8D6aQyKcm1kLsKph4",
+    authDomain: "smart-irrigation-system-pro.firebaseapp.com",
+    projectId: "smart-irrigation-system-pro",
+    storageBucket: "smart-irrigation-system-pro.firebasestorage.app",
+    messagingSenderId: "771441456625",
+    appId: "1:771441456625:web:fafee5fb981ec19f860050",
+    measurementId: "G-CTJE53BWX9"
+};
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let isDeviceOnline = false;
+        let lastPingValue = null;
+        let offlineTimer;
+        let isInitialLoad = true;
+
+        const modal = document.getElementById('offline-modal');
+        const customAlertModal = document.getElementById('custom-alert-modal');
+        const alertTitle = document.getElementById('alert-title');
+        const alertMessage = document.getElementById('alert-message');
+        const alertIconContainer = document.getElementById('alert-icon-container');
+        const alertIcon = document.getElementById('alert-icon');
+        const alertBtn = document.getElementById('alert-btn');
+        
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const statusDot = document.getElementById('header-status-dot');
+        const statusText = document.getElementById('header-status-text');
+        const moisturePulse = document.getElementById('moisturePulse');
+        
+        const moistureValue = document.getElementById('moistureValue');
+        const moistureStatus = document.getElementById('moistureStatus');
+        const moistureRing = document.getElementById('moistureRing');
+        
+        const autoToggle = document.getElementById('autoToggle');
+        const pumpToggle = document.getElementById('pumpToggle');
+        const pumpDesc = document.getElementById('pumpDesc');
+        
+        const ssidInput = document.getElementById('ssidInput');
+        const passInput = document.getElementById('passInput');
+        const sendWifiBtn = document.getElementById('sendWifiBtn');
+
+        db.ref('/savedWifiConfig').once('value').then((snap) => {
+            const data = snap.val();
+            if(data) {
+                ssidInput.value = data.ssid || '';
+                passInput.value = data.pass || '';
+            }
+        });
+
+        function switchTab(pageId, btnElement) {
+            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+            
+            window.scrollTo(0, 0);
+        }
+
+        function dismissOfflineModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function showAlert(title, message, type) {
+            alertTitle.innerText = title;
+            alertMessage.innerText = message;
+            
+            alertIcon.className = "fa-solid";
+            alertIconContainer.className = "w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl border";
+            
+            if(type === "error") {
+                alertIcon.classList.add("fa-triangle-exclamation");
+                alertIconContainer.classList.add("bg-orange-50", "text-orange-500", "border-orange-100");
+                alertBtn.className = "ripple-btn w-full py-3 rounded-xl bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold text-sm shadow-md transition-all";
+            } else if(type === "success") {
+                alertIcon.classList.add("fa-check");
+                alertIconContainer.classList.add("bg-green-50", "text-green-500", "border-green-100");
+                alertBtn.className = "ripple-btn w-full py-3 rounded-xl bg-gradient-to-r from-green-400 to-green-500 text-white font-bold text-sm shadow-md transition-all";
+            } else {
+                alertIcon.classList.add("fa-circle-info");
+                alertIconContainer.classList.add("bg-blue-50", "text-blue-500", "border-blue-100");
+                alertBtn.className = "ripple-btn w-full py-3 rounded-xl bg-gradient-to-r from-blue-400 to-blue-500 text-white font-bold text-sm shadow-md transition-all";
+            }
+            
+            customAlertModal.classList.remove('hidden');
+            customAlertModal.classList.add('flex');
+            bindRipples();
+        }
+
+        function closeCustomAlert() {
+            customAlertModal.classList.add('hidden');
+            customAlertModal.classList.remove('flex');
+        }
+
+        function showLoading() {
+            loadingOverlay.classList.remove('hidden');
+            loadingOverlay.classList.add('flex');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+            loadingOverlay.classList.remove('flex');
+        }
+
+        function setOfflineState() {
+            isDeviceOnline = false;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            statusDot.classList.remove('bg-green-500', 'animate-pulse');
+            statusDot.classList.add('bg-red-500');
+            statusText.innerText = "OFFLINE";
+            statusText.classList.remove('text-teal-600');
+            statusText.classList.add('text-red-400');
+            moisturePulse.classList.remove('animate-pulse');
+        }
+
+        function setOnlineState() {
+            isDeviceOnline = true;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            statusDot.classList.remove('bg-red-500');
+            statusDot.classList.add('bg-green-500', 'animate-pulse');
+            statusText.innerText = "ONLINE";
+            statusText.classList.remove('text-red-400');
+            statusText.classList.add('text-teal-600');
+            moisturePulse.classList.add('animate-pulse');
+        }
+
+        setOfflineState();
+
+        db.ref('/ping').on('value', (snap) => {
+            const currentPing = snap.val();
+            
+            if (isInitialLoad) {
+                lastPingValue = currentPing;
+                isInitialLoad = false;
+                return; 
+            }
+
+            if (currentPing !== lastPingValue) {
+                lastPingValue = currentPing;
+                setOnlineState();
+                
+                clearTimeout(offlineTimer);
+                offlineTimer = setTimeout(() => {
+                    setOfflineState();
+                }, 10000); 
+            }
+        });
+
+        db.ref('/waterLevel').on('value', (snap) => {
+            let val = parseInt(snap.val()) || 0;
+            if (val < 0) val = 0; 
+            if (val > 100) val = 100;
+            
+            moistureValue.innerText = val;
+            moistureRing.style.background = `conic-gradient(#ffffff ${val}%, rgba(255,255,255,0.2) 0%)`;
+            
+            if (val < 30) {
+                moistureStatus.innerText = "Dry Soil";
+                moistureStatus.parentElement.className = "inline-flex items-center gap-2 bg-red-100/30 backdrop-blur-md px-4 py-2 rounded-2xl border border-red-200/30";
+            } else if (val > 80) {
+                moistureStatus.innerText = "Wet Soil";
+                moistureStatus.parentElement.className = "inline-flex items-center gap-2 bg-blue-100/30 backdrop-blur-md px-4 py-2 rounded-2xl border border-blue-200/30";
+            } else {
+                moistureStatus.innerText = "Optimal Soil";
+                moistureStatus.parentElement.className = "inline-flex items-center gap-2 bg-white/25 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20";
+            }
+        });
+
+        let isAuto = false;
+        db.ref('/autoMode').on('value', (snap) => {
+            isAuto = snap.val();
+            if (isAuto) {
+                autoToggle.classList.add('active');
+                pumpDesc.innerText = "Disabled during auto mode";
+            } else {
+                autoToggle.classList.remove('active');
+                pumpDesc.innerText = "Manual pump override";
+            }
+        });
+
+        function handleAutoToggle() {
+            if (!isDeviceOnline) {
+                showAlert("Action Denied", "Device is offline. Cannot change auto mode right now.", "error");
+                return;
+            }
+            showLoading();
+            db.ref('/autoMode').set(!isAuto).then(() => {
+                setTimeout(hideLoading, 400);
+            }).catch(() => {
+                hideLoading();
+                showAlert("Error", "Failed to sync with device.", "error");
+            });
+        }
+
+        let isPumpOn = false;
+        db.ref('/pumpStatus').on('value', (snap) => {
+            isPumpOn = snap.val();
+            if (isPumpOn) {
+                pumpToggle.classList.add('active');
+            } else {
+                pumpToggle.classList.remove('active');
+            }
+        });
+
+        function handlePumpToggle() {
+            if (!isDeviceOnline) {
+                showAlert("Action Denied", "Device is offline. Cannot change pump status right now.", "error");
+                return;
+            }
+            if (isAuto) {
+                showAlert("Action Denied", "Auto mode is ON. Turn it off to manually control the pump.", "error");
+                return;
+            }
+            showLoading();
+            db.ref('/pumpStatus').set(!isPumpOn).then(() => {
+                setTimeout(hideLoading, 400);
+            }).catch(() => {
+                hideLoading();
+                showAlert("Error", "Failed to sync with device.", "error");
+            });
+        }
+
+        sendWifiBtn.addEventListener('click', () => {
+            if (!isDeviceOnline) {
+                showAlert("Action Denied", "Device must be online to update WiFi settings.", "error");
+                return;
+            }
+            const ssid = ssidInput.value;
+            const pass = passInput.value;
+            if(!ssid) {
+                showAlert("Invalid Input", "Please enter a valid WiFi Name.", "error");
+                return;
+            }
+            showLoading();
+            db.ref('/newWifi').set({ ssid: ssid, pass: pass }).then(() => {
+                db.ref('/savedWifiConfig').set({ ssid: ssid, pass: pass });
+                hideLoading();
+                showAlert("Successful", "WiFi details sent successfully!", "success");
+            }).catch(() => {
+                hideLoading();
+                showAlert("Error", "Failed to send WiFi details.", "error");
+            });
+        });
+
+    </script>
+</body>
+</html>
